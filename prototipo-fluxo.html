@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protótipo — Fluxo do Sistema de Triagem de Medições</title>
+<style>
+  /* ============================================================
+     MODELO CRU — foco em entender o fluxo, não no visual final.
+     Tudo comentado para servir de mapa do que será construído.
+     ============================================================ */
+
+  :root{
+    --paper:#f5f3ee;
+    --ink:#1a1a1a;
+    --muted:#6b6b6b;
+    --line:#dcd8ce;
+    --teal:#0ea5a4;
+    --teal-dark:#0b8382;
+    --red:#d1453b;
+    --red-soft:#fdecea;
+    --green:#2e9e5b;
+    --card:#ffffff;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    background:var(--paper); color:var(--ink);
+    line-height:1.5; padding:24px 16px;
+  }
+  .wrap{ max-width:640px; margin:0 auto; }
+
+  /* ---- Cabeçalho ---- */
+  header{ margin-bottom:24px; }
+  header h1{ font-size:20px; font-weight:700; }
+  header p{ font-size:13px; color:var(--muted); margin-top:4px; }
+  .demo-note{
+    background:#fff8e1; border:1px solid #f0e2a8; color:#7a5c00;
+    font-size:12px; padding:8px 12px; border-radius:8px; margin-top:12px;
+  }
+
+  /* ---- Barra de progresso das etapas ---- */
+  .steps-bar{ display:flex; gap:6px; margin:20px 0 24px; }
+  .steps-bar .sb{
+    flex:1; height:5px; border-radius:3px; background:var(--line);
+    transition:background .3s;
+  }
+  .steps-bar .sb.active{ background:var(--teal); }
+  .steps-bar .sb.done{ background:var(--teal-dark); }
+
+  /* ---- Card de cada etapa ---- */
+  .card{
+    background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:24px;
+  }
+  .step{ display:none; }
+  .step.active{ display:block; }
+  .step-eyebrow{
+    font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--teal-dark); font-weight:600; margin-bottom:4px;
+  }
+  .step h2{ font-size:17px; margin-bottom:4px; }
+  .step .sub{ font-size:13px; color:var(--muted); margin-bottom:20px; }
+
+  /* ---- Campos ---- */
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+  .field .hint{ font-size:11px; color:var(--muted); font-weight:400; }
+  .field input, .field select{
+    width:100%; padding:10px 12px; font-size:14px; font-family:inherit;
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+    transition:border-color .2s;
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--teal); }
+  .field.error input, .field.error select{ border-color:var(--red); background:var(--red-soft); }
+  .field .err-msg{ font-size:12px; color:var(--red); margin-top:5px; display:none; }
+  .field.error .err-msg{ display:block; }
+
+  /* ---- Upload (drag & drop) ---- */
+  .dropzone{
+    border:2px dashed var(--line); border-radius:10px; padding:32px 16px;
+    text-align:center; cursor:pointer; transition:.2s; background:#fafafa;
+  }
+  .dropzone:hover{ border-color:var(--teal); background:#f0fbfb; }
+  .dropzone.dragover{ border-color:var(--teal); background:#e6f7f7; }
+  .dropzone .icon{ font-size:28px; }
+  .dropzone p{ font-size:13px; color:var(--muted); margin-top:6px; }
+  .file-list{ margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+  .file-item{
+    display:flex; align-items:center; justify-content:space-between;
+    background:#f4f4f4; border-radius:8px; padding:8px 12px; font-size:13px;
+  }
+  .file-item .fname{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%; }
+  .file-item .fsize{ color:var(--muted); font-size:11px; }
+  .file-item button{
+    border:none; background:none; color:var(--red); cursor:pointer;
+    font-size:16px; line-height:1; padding:0 4px;
+  }
+
+  /* ---- Resumo de dados (etapa de confirmação de leitura) ---- */
+  .summary{ display:flex; flex-direction:column; gap:10px; }
+  .summary .row{ display:flex; justify-content:space-between; gap:16px; font-size:13px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .summary .row .k{ color:var(--muted); }
+  .summary .row .v{ font-weight:600; text-align:right; }
+
+  /* ---- Botões de navegação ---- */
+  .nav{ display:flex; justify-content:space-between; margin-top:24px; gap:12px; }
+  .btn{
+    padding:11px 20px; font-size:14px; font-weight:600; font-family:inherit;
+    border-radius:8px; cursor:pointer; border:1px solid transparent; transition:.2s;
+  }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:hover{ background:var(--teal-dark); }
+  .btn-ghost{ background:transparent; color:var(--muted); border-color:var(--line); }
+  .btn-ghost:hover{ border-color:var(--muted); color:var(--ink); }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* ---- Tela final ---- */
+  .final{ text-align:center; padding:20px 0; }
+  .final .check{
+    width:56px; height:56px; border-radius:50%; background:var(--green);
+    color:#fff; font-size:30px; display:flex; align-items:center; justify-content:center;
+    margin:0 auto 16px;
+  }
+  .final h2{ font-size:18px; margin-bottom:8px; }
+  .final p{ font-size:13px; color:var(--muted); margin-bottom:20px; }
+
+  /* ---- Simulação do e-mail que seria disparado ---- */
+  .email-preview{
+    text-align:left; border:1px solid var(--line); border-radius:10px;
+    overflow:hidden; margin-top:16px;
+  }
+  .email-preview .eh{ background:#f4f4f4; padding:10px 14px; font-size:12px; border-bottom:1px solid var(--line); }
+  .email-preview .eh b{ color:var(--ink); }
+  .email-preview .eb{ padding:14px; font-size:13px; }
+  .email-preview .eb .line{ padding:3px 0; }
+
+  .flow-legend{
+    margin-top:28px; font-size:12px; color:var(--muted);
+    border-top:1px dashed var(--line); padding-top:16px;
+  }
+  .flow-legend b{ color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Sistema de Triagem de Medições</h1>
+    <p>Protótipo do fluxo — Linear Design · KY Design &amp; Desenvolvimento</p>
+    <div class="demo-note">
+      ⚠️ Modelo cru para entender a lógica. O visual final virá do design no Figma.
+      Nada aqui é enviado de verdade — a última tela apenas simula o e-mail.
+    </div>
+  </header>
+
+  <!-- Barra de progresso -->
+  <div class="steps-bar">
+    <div class="sb active" data-sb="1"></div>
+    <div class="sb" data-sb="2"></div>
+    <div class="sb" data-sb="3"></div>
+    <div class="sb" data-sb="4"></div>
+  </div>
+
+  <div class="card">
+
+    <!-- ============ ETAPA 1: Identificação ============ -->
+    <div class="step active" data-step="1">
+      <div class="step-eyebrow">Passo 1 de 4</div>
+      <h2>Identificação e localização</h2>
+      <p class="sub">Preencha os dados do contrato e o endereço da medição.</p>
+
+      <div class="field" data-req>
+        <label>Nome completo <span class="hint">— idêntico ao do contrato</span></label>
+        <input type="text" id="nome" placeholder="Ex: Maria Aparecida da Silva">
+        <div class="err-msg">Preencha o nome completo.</div>
+      </div>
+
+      <div class="field" data-req>
+        <label>Número do contrato</label>
+        <input type="text" id="contrato" placeholder="0000" inputmode="numeric">
+        <div class="err-msg">Informe o número do contrato.</div>
+      </div>
+
+      <div class="field" data-req>
+        <label>Telefone (WhatsApp)</label>
+        <input type="text" id="telefone" placeholder="(00) 00000-0000">
+        <div class="err-msg">Informe um telefone válido.</div>
+      </div>
+
+      <div class="field" data-req>
+        <label>Endereço completo da medição</label>
+        <input type="text" id="endereco" placeholder="Rua, número, bairro, cidade">
+        <div class="err-msg">Informe o endereço da medição.</div>
+      </div>
+
+      <div class="field" data-req>
+        <label>Filial da compra</label>
+        <select id="filial">
+          <option value="">Selecione a loja...</option>
+          <option value="Indianópolis">Indianópolis</option>
+          <option value="Interlagos">Interlagos</option>
+        </select>
+        <div class="err-msg">Selecione a filial.</div>
+      </div>
+
+      <div class="nav">
+        <span></span>
+        <button class="btn btn-primary" onclick="next(1)">Continuar →</button>
+      </div>
+    </div>
+
+    <!-- ============ ETAPA 2: Upload ============ -->
+    <div class="step" data-step="2">
+      <div class="step-eyebrow">Passo 2 de 4</div>
+      <h2>Envio dos projetos</h2>
+      <p class="sub">Anexe as imagens e plantas recebidas do vendedor (cozinha, quarto, etc.).</p>
+
+      <div class="dropzone" id="dropzone">
+        <div class="icon">📎</div>
+        <p><b>Arraste os arquivos aqui</b> ou clique para selecionar</p>
+        <p style="font-size:11px;">JPG, PNG ou PDF · até 10MB cada</p>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.pdf" hidden>
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <div class="err-msg" id="fileErr" style="color:var(--red);font-size:12px;margin-top:10px;display:none;">
+        Anexe pelo menos um arquivo para continuar.
+      </div>
+
+      <div class="nav">
+        <button class="btn btn-ghost" onclick="prev(2)">← Voltar</button>
+        <button class="btn btn-primary" onclick="next(2)">Continuar →</button>
+      </div>
+    </div>
+
+    <!-- ============ ETAPA 3: Revisão ============ -->
+    <div class="step" data-step="3">
+      <div class="step-eyebrow">Passo 3 de 4</div>
+      <h2>Revise antes de enviar</h2>
+      <p class="sub">Confira se os dados estão corretos. Ao enviar, a equipe será notificada.</p>
+
+      <div class="summary" id="summary"><!-- preenchido via JS --></div>
+
+      <div class="nav">
+        <button class="btn btn-ghost" onclick="prev(3)">← Voltar</button>
+        <button class="btn btn-primary" onclick="submitForm()">Enviar solicitação ✓</button>
+      </div>
+    </div>
+
+    <!-- ============ ETAPA 4: Confirmação ============ -->
+    <div class="step" data-step="4">
+      <div class="final">
+        <div class="check">✓</div>
+        <h2>Solicitação enviada!</h2>
+        <p>A Linear Design recebeu seus dados e entrará em contato para agendar a medição.</p>
+
+        <!-- Simulação do e-mail estruturado que o backend dispararia -->
+        <div class="email-preview">
+          <div class="eh">
+            <div><b>Para:</b> <span id="e-para">equipe@lineardesign.com.br</span></div>
+            <div><b>Assunto:</b> <span id="e-assunto"></span></div>
+          </div>
+          <div class="eb" id="e-corpo"><!-- preenchido via JS --></div>
+        </div>
+
+        <div class="nav" style="justify-content:center;">
+          <button class="btn btn-ghost" onclick="restart()">↺ Testar novamente</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Legenda explicando o fluxo por trás -->
+  <div class="flow-legend">
+    <b>Como o fluxo funciona:</b> Passo 1 coleta e valida os dados (bloqueia avanço se algo faltar) →
+    Passo 2 recebe os arquivos via drag &amp; drop →
+    Passo 3 mostra um resumo para revisão →
+    ao enviar, o sistema monta um <b>e-mail estruturado</b> com assunto padronizado e dispara para a equipe.
+    <br><br>
+    <b>No plano Premium</b>, entre o Passo 2 e o envio entraria o <b>checklist de bloqueio de obras</b>,
+    e o e-mail seria <b>roteado por filial</b> (destinatários diferentes para Indianópolis e Interlagos).
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   LÓGICA DO FLUXO — comentada para servir de referência.
+   ============================================================ */
+
+let currentStep = 1;
+const totalSteps = 4;
+const dados = {};          // guarda os dados preenchidos
+let arquivos = [];         // guarda os arquivos anexados
+
+/* ---------- Máscaras de campo ---------- */
+// Telefone: (00) 00000-0000
+document.getElementById('telefone').addEventListener('input', e => {
+  let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 6)      v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+  else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+  else if (v.length > 0) v = `(${v}`;
+  e.target.value = v;
+});
+// Contrato: só números
+document.getElementById('contrato').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '');
+});
+
+/* ---------- Validação de uma etapa ---------- */
+// Verifica todos os campos marcados com [data-req] na etapa atual.
+function validateStep(stepNum){
+  const step = document.querySelector(`.step[data-step="${stepNum}"]`);
+  let ok = true;
+  step.querySelectorAll('.field[data-req]').forEach(field => {
+    const input = field.querySelector('input, select');
+    const val = input.value.trim();
+    // regra extra: telefone precisa ter no mínimo 14 caracteres na máscara
+    const invalid = !val || (input.id === 'telefone' && val.length < 14);
+    if (invalid){ field.classList.add('error'); ok = false; }
+    else field.classList.remove('error');
+  });
+  return ok;
+}
+
+/* ---------- Navegação entre etapas ---------- */
+function goTo(step){
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.querySelector(`.step[data-step="${step}"]`).classList.add('active');
+  // atualiza barra de progresso
+  document.querySelectorAll('.sb').forEach(sb => {
+    const n = +sb.dataset.sb;
+    sb.classList.remove('active','done');
+    if (n < step) sb.classList.add('done');
+    else if (n === step) sb.classList.add('active');
+  });
+  currentStep = step;
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function next(from){
+  // Etapa 1: valida campos
+  if (from === 1){
+    if (!validateStep(1)) return;      // BLOQUEIA se inválido
+    dados.nome     = document.getElementById('nome').value.trim();
+    dados.contrato = document.getElementById('contrato').value.trim();
+    dados.telefone = document.getElementById('telefone').value.trim();
+    dados.endereco = document.getElementById('endereco').value.trim();
+    dados.filial   = document.getElementById('filial').value;
+  }
+  // Etapa 2: exige ao menos 1 arquivo
+  if (from === 2){
+    if (arquivos.length === 0){
+      document.getElementById('fileErr').style.display = 'block';
+      return;                          // BLOQUEIA se sem arquivo
+    }
+    document.getElementById('fileErr').style.display = 'none';
+    buildSummary();                    // monta o resumo do passo 3
+  }
+  goTo(from + 1);
+}
+function prev(from){ goTo(from - 1); }
+
+/* ---------- Upload: drag & drop + clique ---------- */
+const dz = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dz.addEventListener('click', () => fileInput.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => addFiles(e.target.files));
+
+function addFiles(fileArr){
+  [...fileArr].forEach(f => {
+    // validação simples de tamanho (10MB)
+    if (f.size > 10 * 1024 * 1024){ alert(`"${f.name}" excede 10MB.`); return; }
+    arquivos.push(f);
+  });
+  renderFiles();
+}
+function removeFile(i){ arquivos.splice(i,1); renderFiles(); }
+function renderFiles(){
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  arquivos.forEach((f, i) => {
+    const kb = (f.size/1024).toFixed(0);
+    const size = kb > 1024 ? (kb/1024).toFixed(1)+' MB' : kb+' KB';
+    list.innerHTML += `
+      <div class="file-item">
+        <span class="fname">📄 ${f.name}</span>
+        <span><span class="fsize">${size}</span>
+        <button onclick="removeFile(${i})" title="Remover">✕</button></span>
+      </div>`;
+  });
+  if (arquivos.length) document.getElementById('fileErr').style.display = 'none';
+}
+
+/* ---------- Resumo (passo 3) ---------- */
+function buildSummary(){
+  const s = document.getElementById('summary');
+  s.innerHTML = `
+    <div class="row"><span class="k">Nome</span><span class="v">${dados.nome}</span></div>
+    <div class="row"><span class="k">Contrato</span><span class="v">${dados.contrato}</span></div>
+    <div class="row"><span class="k">Telefone</span><span class="v">${dados.telefone}</span></div>
+    <div class="row"><span class="k">Endereço</span><span class="v">${dados.endereco}</span></div>
+    <div class="row"><span class="k">Filial</span><span class="v">${dados.filial}</span></div>
+    <div class="row"><span class="k">Arquivos anexados</span><span class="v">${arquivos.length} arquivo(s)</span></div>
+  `;
+}
+
+/* ---------- Envio: simula o e-mail estruturado ---------- */
+function submitForm(){
+  // Assunto padronizado: [Medição Técnica] Contrato: XXXX - Cliente: Nome - Loja: Filial
+  const assunto = `[Medição Técnica] Contrato: ${dados.contrato} - Cliente: ${dados.nome} - Loja: ${dados.filial}`;
+  document.getElementById('e-assunto').textContent = assunto;
+
+  const listaArq = arquivos.map(f => `• ${f.name}`).join('<br>');
+  document.getElementById('e-corpo').innerHTML = `
+    <div class="line"><b>Nova solicitação de medição</b></div>
+    <div class="line">Cliente: ${dados.nome}</div>
+    <div class="line">Contrato: ${dados.contrato}</div>
+    <div class="line">Telefone: ${dados.telefone}</div>
+    <div class="line">Endereço: ${dados.endereco}</div>
+    <div class="line">Filial: ${dados.filial}</div>
+    <div class="line" style="margin-top:8px;"><b>Projetos anexados:</b><br>${listaArq}</div>
+  `;
+  goTo(4);
+}
+
+/* ---------- Reiniciar o teste ---------- */
+function restart(){
+  currentStep = 1; arquivos = [];
+  document.querySelectorAll('input, select').forEach(el => el.value = '');
+  document.querySelectorAll('.field').forEach(f => f.classList.remove('error'));
+  renderFiles();
+  goTo(1);
+}
+</script>
+</body>
+</html>
